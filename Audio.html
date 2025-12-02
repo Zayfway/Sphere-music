@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ultra High-End Audio Visualizer</title>
+    <style>
+        /* --- DESIGN SYSTÈME HAUTE DÉFINITION --- */
+        :root {
+            --bg-color: #000000;
+            --glass: rgba(5, 5, 5, 0.9);
+            --border: rgba(255, 255, 255, 0.15);
+            --accent: #ffffff;
+            --neon-glow: 0 0 25px rgba(255, 255, 255, 0.3);
+        }
+
+        body {
+            margin: 0; overflow: hidden; background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: white; -webkit-user-select: none; user-select: none;
+        }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+        /* --- CONTROLS UI --- */
+        #controls {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            width: auto; min-width: 300px; max-width: 450px; height: 60px;
+            z-index: 100; background: var(--glass);
+            backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--border); border-radius: 30px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 15px; gap: 15px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.95);
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .btn-control { background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; }
+        
+        .play-btn-circle {
+            width: 44px; height: 44px; background: white; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 0.2s ease; box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        .play-btn-circle:active { transform: scale(0.92); }
+        .play-btn-circle svg { width: 16px; height: 16px; fill: black; }
+
+        .volume-wrap { flex-grow: 1; display: flex; align-items: center; gap: 10px; }
+        .vol-icon { width: 16px; opacity: 0.6; fill: white; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 2px; background: rgba(255,255,255,0.2); }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 10px; width: 10px; border-radius: 50%; background: white; margin-top: -4px; box-shadow: 0 0 10px white;
+        }
+
+        /* --- OVERLAY ACCUEIL --- */
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 200;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #overlay.hidden { opacity: 0; pointer-events: none; }
+
+        h1 { 
+            font-weight: 300; letter-spacing: 12px; text-transform: uppercase; 
+            font-size: 1.2rem; margin-bottom: 60px; color: rgba(255,255,255,0.9);
+        }
+
+        .btn-upload {
+            padding: 16px 40px; border: 1px solid rgba(255,255,255,0.4); border-radius: 3px;
+            font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 4px;
+            background: transparent; color: white; cursor: pointer; transition: all 0.3s ease;
+        }
+        .btn-upload:hover { background: white; color: black; box-shadow: var(--neon-glow); border-color: white; }
+        #loading-text { margin-top: 30px; font-size: 0.7rem; color: #444; letter-spacing: 2px; display: none; }
+        #file-input { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h1>Quantum Sphere</h1>
+        <label for="file-input" class="btn-upload">Charger Audio</label>
+        <div id="loading-text">Initialisation...</div>
+    </div>
+
+    <div id="controls" style="transform: translate(-50%, 100px); opacity: 0;">
+        <button id="play-btn" class="btn-control">
+            <div class="play-btn-circle">
+                <svg id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="icon-pause" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </div>
+        </button>
+        <div class="volume-wrap">
+            <svg class="vol-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+            <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+        </div>
+        <label for="file-input" class="btn-control" style="opacity: 0.6; cursor: pointer; padding: 10px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+        </label>
+    </div>
+
+    <audio id="audio-element"></audio>
+    <input type="file" id="file-input" accept=".mp3,audio/mpeg,audio/*">
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+    <script>
+        let scene, camera, renderer, composer;
+        let particles, originalPositions, normals;
+        let audioCtx, analyser, source, gainNode, dataArray;
+        let isPlaying = false;
+        let time = 0;
+        // Variables de lissage pour une transition ultra-fluide
+        let smoothBass = 0, smoothMid = 0, smoothTreble = 0;
+
+        const UI = {
+            overlay: document.getElementById('overlay'),
+            controls: document.getElementById('controls'),
+            loading: document.getElementById('loading-text'),
+            fileInput: document.getElementById('file-input'),
+            audio: document.getElementById('audio-element'),
+            playBtn: document.getElementById('play-btn'),
+            iconPlay: document.getElementById('icon-play'),
+            iconPause: document.getElementById('icon-pause'),
+            volume: document.getElementById('volume-slider')
+        };
+
+        window.onload = () => { initThree(); setupEvents(); };
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.z = 35;
+
+            // Rendu Haute Qualité
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio); // Rendu natif pour netteté maximale
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // --- GÉOMÉTRIE ULTRA DENSE ---
+            // Rayon 10, Détail 7 (≈ 40000 points)
+            const geometry = new THREE.IcosahedronGeometry(10, 7); 
+            const posAttr = geometry.attributes.position;
+            const count = posAttr.count;
+            
+            // Stockage des positions ET des normales pour le mouvement contrôlé
+            originalPositions = new Float32Array(count * 3);
+            normals = new Float32Array(count * 3);
+            
+            for(let i=0; i<count; i++){
+                const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+                originalPositions[i*3] = x; originalPositions[i*3+1] = y; originalPositions[i*3+2] = z;
+                // Calcul du vecteur normal (direction depuis le centre)
+                const len = Math.sqrt(x*x + y*y + z*z);
+                normals[i*3] = x/len; normals[i*3+1] = y/len; normals[i*3+2] = z/len;
+            }
+
+            // Texture de point "Sharp" (nette)
+            const texture = createSharpTexture();
+            const material = new THREE.PointsMaterial({
+                size: 0.25, // Points très fins
+                map: texture,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                color: 0xffffff
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            // --- POST PROCESSING "FIN" ---
+            const renderScene = new THREE.RenderPass(scene, camera);
+            // Bloom précis: Rayon faible, seuil élevé
+            const bloomPass = new THREE.UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight), 
+                1.2,  // Force modérée
+                0.3,  // Rayon faible (pas de flou baveux)
+                0.2   // Seuil (seuls les points brillants émettent de la lumière)
+            );
+
+            composer = new THREE.EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            animate();
+        }
+
+        function createSharpTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            // Dégradé très serré pour un point net
+            const grad = ctx.createRadialGradient(32,32,0,32,32,32);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.3, 'rgba(255,255,255,0.8)');
+            grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,64,64);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- GESTION AUDIO & UI ---
+        function setupEvents() {
+            UI.fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                UI.loading.style.display = 'block';
+                UI.audio.src = URL.createObjectURL(file);
+                initAudio();
+                setTimeout(() => {
+                    UI.overlay.classList.add('hidden');
+                    UI.controls.style.transform = 'translate(-50%, 0)';
+                    UI.controls.style.opacity = '1';
+                    togglePlay(true);
+                }, 1000);
+            });
+            UI.playBtn.addEventListener('click', () => togglePlay());
+            UI.volume.addEventListener('input', (e) => { if(gainNode) gainNode.gain.value = e.target.value; });
+            UI.audio.addEventListener('ended', () => { isPlaying = false; updatePlayIcon(); });
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                composer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048; 
+            // Lissage moyen pour la réactivité
+            analyser.smoothingTimeConstant = 0.6; 
+            source = audioCtx.createMediaElementSource(UI.audio);
+            gainNode = audioCtx.createGain();
+            source.connect(gainNode); gainNode.connect(analyser); analyser.connect(audioCtx.destination);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+        }
+
+        function togglePlay(force = false) {
+            if (audioCtx?.state === 'suspended') audioCtx.resume();
+            if (force || UI.audio.paused) {
+                UI.audio.play().then(() => { isPlaying = true; updatePlayIcon(); });
+            } else {
+                UI.audio.pause(); isPlaying = false; updatePlayIcon();
+            }
+        }
+
+        function updatePlayIcon() {
+            UI.iconPlay.style.display = isPlaying ? 'none' : 'block';
+            UI.iconPause.style.display = isPlaying ? 'block' : 'none';
+        }
+
+        // --- MOTEUR D'ANIMATION HAUTE PRÉCISION ---
+        function animate() {
+            requestAnimationFrame(animate);
+            // Temps ralenti pour mouvement majestueux
+            time += 0.003; 
+
+            let tBass = 0, tMid = 0, tTreble = 0;
+            if (isPlaying && analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                // Analyse fine des bandes de fréquence
+                for(let i=0; i<20; i++) tBass += dataArray[i]; 
+                tBass = (tBass/20)/255; // Kicks profonds
+                for(let i=100; i<300; i++) tMid += dataArray[i];
+                tMid = (tMid/200)/255; // Voix / Instruments
+                for(let i=400; i<600; i++) tTreble += dataArray[i];
+                tTreble = (tTreble/200)/255; // Aigus fins (cymbales)
+            }
+
+            // Lissage LERP pour transition d'arrêt fluide
+            smoothBass += (tBass - smoothBass) * 0.1;
+            smoothMid += (tMid - smoothMid) * 0.1;
+            smoothTreble += (tTreble - smoothTreble) * 0.1;
+
+            const positions = particles.geometry.attributes.position;
+            const count = positions.count;
+
+            // Paramètres de physique liquide contrôlée
+            const globalBreathing = 1 + (smoothBass * 0.4); // La sphère gonfle avec les basses
+            const rippleSpeed = time * 3;
+
+            for(let i=0; i<count; i++) {
+                const idx = i*3;
+                const ox = originalPositions[idx], oy = originalPositions[idx+1], oz = originalPositions[idx+2];
+                const nx = normals[idx], ny = normals[idx+1], nz = normals[idx+2];
+
+                // --- ALGORITHME DE SURFACE LIQUIDE ---
+                // On utilise des ondes sinusoïdales complexes basées sur la position du point
+                // Cela crée des motifs de surface au lieu de bruit aléatoire
+                
+                // Vagues moyennes (Médiums)
+                const wave1 = Math.sin(ox*0.3 + rippleSpeed) * Math.cos(oy*0.3 + rippleSpeed) * Math.sin(oz*0.3 + rippleSpeed);
+                // Vagues fines rapides (Aigus)
+                const wave2 = Math.cos(ox*0.8 + time*6) * Math.sin(oz*0.8 + time*7);
+
+                // Calcul du déplacement total LE LONG DE LA NORMALE
+                // Base + Vagues moyennes + Vagues fines
+                const displacement = globalBreathing + (wave1 * smoothMid * 0.3) + (wave2 * smoothTreble * 0.15);
+
+                // Application : Position = Normale * Déplacement
+                positions.setXYZ(i, nx * displacement * 10, ny * displacement * 10, nz * displacement * 10);
+            }
+            positions.needsUpdate = true;
+            
+            particles.rotation.y = time * 0.15; // Rotation lente
+            particles.rotation.z = Math.cos(time * 0.2) * 0.05; // Tangage subtil
+
+            composer.render();
+        }
+    </script>
+</body>
+</html>
