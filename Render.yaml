@@ -1,0 +1,4 @@
+redirects:
+  - from: /
+    to: /Audio.html
+    status: 302
